@@ -4,6 +4,7 @@ from typing import List, Tuple
 import sys
 import json
 import anthropic
+import argparse
 
 
 with open('api_keys.json') as config_file:
@@ -25,12 +26,10 @@ client = openai.OpenAI(
     api_key=os.environ.get("OPENAI_API_KEY"),
 )
 
-# Parameters
 TOTAL_GENERATIONS = 8  # Total number of parallel generations (i)
 BEAM_WIDTH = 2          # Number of top beams to keep (k)
 MAX_STEPS = 20          # Maximum number of steps to prevent infinite loops
 
-# Models
 GENERATE_MODEL = "gpt-4o-mini"
 VERIFY_MODEL = "gpt-4o-mini"
 
@@ -100,10 +99,6 @@ def generate_step(question: str, steps: List[str], expansion: int = 2) -> str:
 
 
 def verify_step(question: str, prev_steps: List[str], new_step_candidates: List[str]) -> float:
-    """
-    Verify and score the newly generated step using OpenAI's completion API.
-    Returns a numerical score.
-    """
 
     score_per_candidate = []
 
@@ -148,7 +143,6 @@ def beam_search(question: str, total_generations: int, beam_width: int, max_step
     """
     Perform beam search to solve the given math problem.
     """
-    # Initialize the beams with an empty solution and a score of 0
     beams = [Beam(question=question, steps=[], score=[]) for _ in range(beam_width)]
 
     for step_num in range(1, max_steps + 1):
@@ -182,15 +176,12 @@ def beam_search(question: str, total_generations: int, beam_width: int, max_step
         # Sort all candidates by their cumulative score in descending order
         all_candidates.sort(key=lambda b: sum(b.score), reverse=True)
 
-        # Select the top 'beam_width' beams
         beams = all_candidates[:beam_width]
         print(f"Top {beam_width} beams after Step {step_num}:")
         for idx, beam in enumerate(beams, 1):
             print(f"Beam {idx}: Score={beam.score[-1]:.4f},\n\nSteps={'\n\n'.join(beam.steps)}\n\n")
 
-        # Termination condition: If all beams have reached a conclusion
-        # This is a placeholder. You might want to implement a more robust check.
-        # For example, checking if the last step contains words like 'Therefore', 'Hence', or 'Answer'.
+
         termination_keywords = ['Answer', 'answer']
 
         for beam in beams:
@@ -202,22 +193,20 @@ def beam_search(question: str, total_generations: int, beam_width: int, max_step
             print("Termination condition met. Ending beam search.")
             break
 
-        # if all(any(keyword in step.lower() for keyword in termination_keywords) for step in beam.steps[-1:] for beam in beams):
-        #     print("Termination condition met. Ending beam search.")
-        #     break
 
     return beams
 
 def main():
-    """
-    Main function to execute the beam search solver.
-    """
+
+    parser = argparse.ArgumentParser(description="Beam search solver for math problems.")
+    parser.add_argument('question', type=str, nargs='*', help='The math problem you want to solve')
+    args = parser.parse_args()
 
     # Get the math problem from the user
-    if len(sys.argv) < 2:
+    if not args.question:
         question = input("Enter the math problem you want to solve: ")
     else:
-        question = ' '.join(sys.argv[1:])
+        question = ' '.join(args.question)
 
     print(f"\nSolving the problem: {question}")
 
@@ -227,7 +216,6 @@ def main():
     # Display the final solutions
     print("\n--- Final Solutions ---")
     for idx, beam in enumerate(final_beams, 1):
-        # print(f"\nSolution {idx} (Score: {beam.score:.4f}):")
         for step_num, step in enumerate(beam.steps, 1):
             print(f"Step {step_num}: {step}")
 
