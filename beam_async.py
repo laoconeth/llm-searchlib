@@ -19,9 +19,8 @@ Solution Steps:
 {solution_steps}
 Next step:"""
 
-# Models and termination conditions
-GENERATE_MODEL = "gpt-4-turbo-preview"
-EMBEDDING_MODEL = "text-embedding-3-small"
+GENERATE_MODEL = "gpt-4o-mini"
+REWARD_MODEL = "/mnt/chatbot30TB/junghyunlee/juneyang/Qwen/Qwen2.5-Math-RM-72B"
 TERMINATION_KEYWORDS = ['Answer', 'answer']
 
 @dataclass
@@ -128,7 +127,7 @@ class BeamSearcher:
         try:
             response = await asyncio.to_thread(
                 self.openai_client.embeddings.create,
-                model=EMBEDDING_MODEL,
+                model=REWARD_MODEL,
                 input=verification_texts
             )
             
@@ -138,7 +137,7 @@ class BeamSearcher:
                 beam_idx, step_idx = step_indices[idx]
                 token_scores = embedding_data.embedding
                 
-                step_score = sum(token_scores) / len(token_scores)
+                step_score = token_scores[-1]
                 
                 normalized_score = max(0.0, min(1.0, step_score))
                 
@@ -185,7 +184,8 @@ class BeamSearcher:
             print(f"\nTop {beam_width} beams after Step {step_num}:")
             for idx, beam in enumerate(beam_manager.beams, 1):
                 print(f"Beam {idx}: Score={beam.total_score:.4f}")
-                print(f"Steps:\n{'\n'.join(beam.steps)}\n")
+                steps = '\n'.join(beam.steps)
+                print(f"Steps:\n{steps}\n")
             
             if beam_manager.all_beams_ended():
                 print("All beams have ended. Terminating search.")
@@ -224,6 +224,7 @@ def main():
 
     openai_client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     anthropic_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    vllm_client = openai.OpenAI(api_key="dummy-key", base_url="http://0.0.0.0:8001/v1")
 
     question = ' '.join(args.question) if args.question else input("Enter the math problem you want to solve: ")
     print(f"\nSolving the problem: {question}")
