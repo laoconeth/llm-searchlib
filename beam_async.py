@@ -71,9 +71,10 @@ class BeamManager:
         return [beam.steps for beam in self.beams]
 
 class BeamSearcher:
-    def __init__(self, openai_client, anthropic_client):
-        self.openai_client = openai_client
+    def __init__(self, generator_client, anthropic_client, rm_client):
+        self.generator_client = generator_client
         self.anthropic_client = anthropic_client
+        self.rm_client = rm_client
 
     async def generate_steps_batch(self, question: str, beam_steps: List[str], expansion: int) -> List[str]:
         prompt = GENERATOR_PROMPT_TEMPLATE.format(
@@ -83,7 +84,7 @@ class BeamSearcher:
 
         try:
             response = await asyncio.to_thread(
-                self.openai_client.chat.completions.create,
+                self.generator_client.chat.completions.create,
                 model=GENERATE_MODEL,
                 messages=[
                     {"role": "system", "content": GENERATOR_SYSTEM_PROMPT},
@@ -125,8 +126,9 @@ class BeamSearcher:
                 step_indices.append((beam_idx, step_idx))
         
         try:
+            print("Calling RM for verification...")
             response = await asyncio.to_thread(
-                self.openai_client.embeddings.create,
+                self.rm_client.embeddings.create,
                 model=REWARD_MODEL,
                 input=verification_texts
             )
@@ -211,6 +213,8 @@ def main():
                       help='Maximum number of steps')
     parser.add_argument('--config', type=str, default='api_keys.json',
                       help='Path to API keys configuration file')
+    parser.add_argument('--generator', type=str, default='gpt-4o-mini',
+                      help='Generator LLM model')
     args = parser.parse_args()
 
     try:
@@ -222,14 +226,14 @@ def main():
         print(f"Error: Could not find config file: {args.config}")
         sys.exit(1)
 
-    openai_client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    generator_client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     anthropic_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-    vllm_client = openai.OpenAI(api_key="dummy-key", base_url="http://0.0.0.0:8001/v1")
+    rm_client = openai.OpenAI(api_key="dummy-key", base_url="http://0.0.0.0:8001/v1")
 
     question = ' '.join(args.question) if args.question else input("Enter the math problem you want to solve: ")
     print(f"\nSolving the problem: {question}")
 
-    beam_searcher = BeamSearcher(openai_client, anthropic_client)
+    beam_searcher = BeamSearcher(generator_client, anthropic_client, rm_client)
     final_beams = beam_searcher.search(
         question,
         args.total_generations,
